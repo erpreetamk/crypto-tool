@@ -294,6 +294,8 @@
             let currentOperation = 'encrypt'; // 'encrypt' or 'decrypt'
             let currentAlgorithm = 'aes'; // 'aes' or 'rsa'
             let uploadedFile = null; // { name: string, data: ArrayBuffer }
+            let encryptedFileBlob = null; // Holds Blob data of an encrypted file
+            let decryptedFileBlob = null; // Holds Blob data of a decrypted file
             let rsaKeyPair = null; // { publicKey: CryptoKey, privateKey: CryptoKey }
 
             // =================================================================================
@@ -367,13 +369,14 @@
 
             // Triggers a browser download for the given data.
             function downloadFile(filename, data) {
-                const blob = new Blob([data]);
+                const blob = data instanceof Blob ? data : new Blob([data]);
                 const link = document.createElement('a');
                 link.href = URL.createObjectURL(blob);
                 link.download = filename;
                 document.body.appendChild(link);
                 link.click();
                 document.body.removeChild(link);
+                URL.revokeObjectURL(link.href);
             }
 
             // =================================================================================
@@ -394,7 +397,7 @@
                     opDecryptBtn.classList.remove('text-gray-300');
                     opEncryptBtn.classList.remove('bg-cyan-500', 'text-white', 'shadow');
                     opEncryptBtn.classList.add('text-gray-300');
-                    processBtn.innerHTML = '<i class="fas fa-bolt mr-2"></i> Decrypt';
+                    processBtn.innerHTML = '<i class="fas fa-key mr-2"></i> Decrypt';
                 }
             }
             
@@ -407,7 +410,7 @@
                 } else { // rsa
                     aesKeySection.classList.add('hidden');
                     rsaKeySection.classList.remove('hidden');
-                    if(publicKeyTextarea.value) { // only show keys if they exist
+                    if(publicKeyTextarea.value || privateKeyTextarea.value) { // only show keys if they exist
                          rsaKeysDisplay.classList.remove('hidden');
                     }
                 }
@@ -530,9 +533,33 @@
             // =================================================================================
             // All user interactions are handled here.
 
+            // Swaps the content of the input and output textareas.
+            function swapIO() {
+                // Do not swap if a file is involved, as the UI state is different.
+                if (uploadedFile || decryptedFileBlob || encryptedFileBlob) {
+                    outputText.value = '';
+                    return;
+                }
+                const temp = inputText.value;
+                inputText.value = outputText.value;
+                outputText.value = temp;
+            }
+
             // Operation toggle buttons
-            opEncryptBtn.addEventListener('click', () => { currentOperation = 'encrypt'; updateOperationUI(); });
-            opDecryptBtn.addEventListener('click', () => { currentOperation = 'decrypt'; updateOperationUI(); });
+            opEncryptBtn.addEventListener('click', () => { 
+                if (currentOperation !== 'encrypt') {
+                    currentOperation = 'encrypt'; 
+                    updateOperationUI(); 
+                    swapIO();
+                }
+            });
+            opDecryptBtn.addEventListener('click', () => { 
+                if (currentOperation !== 'decrypt') {
+                    currentOperation = 'decrypt'; 
+                    updateOperationUI(); 
+                    swapIO();
+                }
+            });
             
             // Algorithm selector dropdown
             algorithmSelect.addEventListener('change', (e) => { currentAlgorithm = e.target.value; updateAlgorithmUI(); updateAlgoTooltip(); });
@@ -542,7 +569,7 @@
                 inputText.value = ''; outputText.value = ''; aesPasswordInput.value = '';
                 publicKeyTextarea.value = ''; privateKeyTextarea.value = '';
                 rsaKeysDisplay.classList.add('hidden');
-                uploadedFile = null; rsaKeyPair = null;
+                uploadedFile = null; rsaKeyPair = null; decryptedFileBlob = null; encryptedFileBlob = null;
                 updatePasswordStrengthUI('');
             });
             
@@ -581,14 +608,25 @@
                     }
 
                     // Step 3: Display the output.
-                    if (currentOperation === 'encrypt' || (uploadedFile && currentOperation === 'decrypt')) {
-                         outputText.value = arrayBufferToBase64(result);
-                         if(uploadedFile && currentOperation === 'decrypt'){
-                             showAlert('File decrypted! Click the download button to save the result.');
-                         }
-                    } else {
-                         outputText.value = new TextDecoder().decode(result);
+                    decryptedFileBlob = null; // Reset on every process
+                    encryptedFileBlob = null; // Reset on every process
+
+                    if (currentOperation === 'encrypt') {
+                        if (uploadedFile) {
+                            encryptedFileBlob = new Blob([result]);
+                            outputText.value = `✅ File encrypted successfully!\n\nClick the download button to save it.`;
+                        } else {
+                            outputText.value = arrayBufferToBase64(result);
+                        }
+                    } else { // Decrypting
+                        if (uploadedFile) {
+                            decryptedFileBlob = new Blob([result]);
+                            outputText.value = `✅ File decrypted successfully!\n\nClick the download button to save it.`;
+                        } else {
+                            outputText.value = new TextDecoder().decode(result);
+                        }
                     }
+
                 } catch (error) {
                     showAlert(error.message);
                     outputText.value = '';
@@ -654,19 +692,20 @@
             });
 
             downloadOutputBtn.addEventListener('click', () => {
-                if (!outputText.value) return;
-                let filename = "result.txt";
-                let data;
-                if (uploadedFile) {
-                    filename = currentOperation === 'encrypt' ? `${uploadedFile.name}.enc` : uploadedFile.name.replace(/\.enc$/, '');
-                    data = base64ToArrayBuffer(outputText.value);
-                } else {
-                    data = new TextEncoder().encode(outputText.value);
+                if (decryptedFileBlob) {
+                    const filename = uploadedFile.name.replace(/\.enc$/, '');
+                    downloadFile(filename, decryptedFileBlob);
+                } else if (encryptedFileBlob) {
+                    const filename = `${uploadedFile.name}.enc`;
+                    downloadFile(filename, encryptedFileBlob);
+                } else if (outputText.value) {
+                    const filename = currentOperation === 'encrypt' ? 'encrypted-text.txt' : 'decrypted-text.txt';
+                    downloadFile(filename, new Blob([outputText.value], {type: "text/plain"}));
                 }
-                downloadFile(filename, data);
             });
+
             clearInputBtn.addEventListener('click', () => { inputText.value = ''; uploadedFile = null; });
-            clearOutputBtn.addEventListener('click', () => outputText.value = '');
+            clearOutputBtn.addEventListener('click', () => { outputText.value = ''; decryptedFileBlob = null; encryptedFileBlob = null; });
             
             // Password strength meter updates on input
             aesPasswordInput.addEventListener('input', (e) => updatePasswordStrengthUI(e.target.value));
@@ -741,5 +780,4 @@
 
 </body>
 </html>
-
 

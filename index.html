@@ -749,31 +749,49 @@
             updateAlgoTooltip();
 
             const setupTooltip = (icon, tooltip) => {
-                const showTooltip = () => tooltip.classList.add('show');
-                const hideTooltip = () => tooltip.classList.remove('show');
+                const canHover = window.matchMedia('(hover: hover)').matches;
 
-                // Show on hover for desktop, hide on leave
-                icon.addEventListener('mouseenter', showTooltip);
-                icon.addEventListener('mouseleave', hideTooltip);
-                tooltip.addEventListener('mouseenter', showTooltip);
-                tooltip.addEventListener('mouseleave', hideTooltip);
+                // For devices that can hover, add mouseenter/mouseleave listeners.
+                if (canHover) {
+                    icon.addEventListener('mouseenter', () => tooltip.classList.add('show'));
+                    icon.addEventListener('mouseleave', () => {
+                        // If the tooltip has been clicked (pinned), don't hide it on mouseleave.
+                        if (tooltip.dataset.pinned !== 'true') {
+                            tooltip.classList.remove('show');
+                        }
+                    });
+                }
 
-                // Toggle on click for all devices
+                // For all devices, handle click/tap to pin/unpin the tooltip.
                 icon.addEventListener('click', (e) => {
                     e.stopPropagation();
-                    const isShown = tooltip.classList.toggle('show');
+                    const isPinned = tooltip.dataset.pinned === 'true';
+
+                    // Un-pin and hide all other tooltips first.
                     const otherTooltip = tooltip === warningTooltip ? algoTooltip : warningTooltip;
-                    if (isShown) otherTooltip.classList.remove('show');
+                    otherTooltip.classList.remove('show');
+                    otherTooltip.dataset.pinned = 'false';
+
+                    // Toggle the pinned state and visibility of the current tooltip.
+                    if (isPinned) {
+                        tooltip.dataset.pinned = 'false';
+                        tooltip.classList.remove('show');
+                    } else {
+                        tooltip.dataset.pinned = 'true';
+                        tooltip.classList.add('show');
+                    }
                 });
             };
 
             setupTooltip(warningIcon, warningTooltip);
             setupTooltip(algoIcon, algoTooltip);
             
-            // Global click listener to close tooltips when clicking anywhere else
+            // Global click listener to close any pinned tooltips.
             window.addEventListener('click', () => {
-                warningTooltip.classList.remove('show');
-                algoTooltip.classList.remove('show');
+                document.querySelectorAll('.tooltip-container').forEach(el => {
+                    el.classList.remove('show');
+                    el.dataset.pinned = 'false';
+                });
             });
         });
     </script>

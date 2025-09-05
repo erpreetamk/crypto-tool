@@ -4,7 +4,7 @@ A secure, client-side encryption and decryption tool that runs entirely in your 
 
 ### [**➡️ View Live Demo**](https://erpreetamk.github.io/crypto-tool/)
 
-[image1](erpreetamk.github.io_crypto-tool_img.png)
+![Screenshot](erpreetamk.github.io_crypto-tool_img.png)
 
 ## **✨ Key Features**
 
